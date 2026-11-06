@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepVision AI — Industrial Visual Inspection</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='%2322d3ee'/%3E%3Ccircle cx='12' cy='12' r='5' fill='%230b1020'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="container-xl d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div class="brand d-flex align-items-center gap-3">
+      <div class="brand-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3.2"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-title">DeepVision <span>AI</span></h1>
+        <p class="brand-sub">Industrial visual inspection · classification + anomaly heatmap</p>
+      </div>
+    </div>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+      <span class="pill" id="pillClassifier" data-state="loading"><i class="dot"></i><span class="pill-text">Classifier…</span></span>
+      <span class="pill" id="pillReference" data-state="loading"><i class="dot"></i><span class="pill-text">References…</span></span>
+      <span class="pill" id="pillDevice" data-state="loading"><i class="dot"></i><span class="pill-text">Device…</span></span>
+      <button type="button" id="btnRefresh" class="btn btn-sm btn-ghost" title="Re-check models and reference images">↻ Refresh status</button>
+    </div>
+  </div>
+</header>
+
+<main class="container-xl py-4">
+  <p class="notice">Educational prototype — not a certified inspection system. Scores depend on your data and imaging conditions; always keep a human in the loop.</p>
+
+  <div class="row g-4">
+
+    <!-- ============ LEFT: controls ============ -->
+    <aside class="col-lg-4">
+      <div class="panel sticky-panel">
+
+        <h2 class="panel-title"><span class="step">1</span> Upload image</h2>
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Choose or drop an image">
+          <input id="fileInput" class="file-input" type="file" tabindex="-1"
+                 accept="image/png,image/jpeg,image/bmp,image/webp,.jpg,.jpeg,.png,.bmp,.webp">
+          <div class="dz-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+            </svg>
+          </div>
+          <p class="dz-title" id="dzTitle">Drop an image here</p>
+          <p class="dz-sub" id="dzSub">or click to browse · paste with Ctrl+V<br>JPG, PNG, BMP, WEBP · max 16 MB</p>
+          <span class="btn btn-sm btn-ghost dz-browse">Browse files</span>
+        </div>
+
+        <h2 class="panel-title mt-4"><span class="step">2</span> Analysis mode</h2>
+        <div class="segmented" role="group" aria-label="Analysis mode">
+          <button type="button" class="seg active" data-mode="combined" aria-pressed="true">Combined</button>
+          <button type="button" class="seg" data-mode="classifier" aria-pressed="false">A · Classifier</button>
+          <button type="button" class="seg" data-mode="anomaly" aria-pressed="false">B · Anomaly</button>
+        </div>
+        <p class="help" id="modeHelp">Runs both methods and compares their verdicts.</p>
+
+        <h2 class="panel-title mt-4"><span class="step">3</span> Tune</h2>
+        <div class="slider-row">
+          <label for="thresholdRange">Anomaly threshold</label>
+          <output id="thresholdValue" for="thresholdRange">1.20</output>
+        </div>
+        <input id="thresholdRange" type="range" min="0.5" max="3" step="0.05" value="1.2">
+        <div class="d-flex justify-content-between align-items-center">
+          <p class="help mb-0">Score above this = defect suspected. Updates the verdict instantly.</p>
+          <button type="button" id="btnResetThreshold" class="link-btn">Reset</button>
+        </div>
+
+        <div class="slider-row mt-3">
+          <label for="opacityRange">Heatmap opacity</label>
+          <output id="opacityValue" for="opacityRange">70%</output>
+        </div>
+        <input id="opacityRange" type="range" min="0" max="100" step="5" value="70">
+
+        <div class="d-grid gap-2 mt-4">
+          <button type="button" id="btnAnalyze" class="btn btn-accent btn-lg" disabled>Analyze image</button>
+          <button type="button" id="btnReset" class="btn btn-ghost" disabled>Reset</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============ RIGHT: results ============ -->
+    <section class="col-lg-8">
+
+      <!-- error (visible with or without a loaded image) -->
+      <div id="errorBox" class="error-box" role="alert" hidden>
+        <span id="errorText"></span>
+        <button type="button" id="btnDismissError" class="close-x" aria-label="Dismiss error">×</button>
+      </div>
+
+      <!-- empty state -->
+      <div id="emptyState" class="panel empty">
+        <h2 class="empty-title">Inspect a product in three steps</h2>
+        <div class="row g-3 mt-1">
+          <div class="col-md-4"><div class="how"><span class="how-n">1</span><h3>Upload</h3><p>Drop a photo of the product on the left, or paste it from the clipboard.</p></div></div>
+          <div class="col-md-4"><div class="how"><span class="how-n">2</span><h3>Analyze</h3><p>A ResNet18 classifier and a normal-reference anomaly detector inspect it.</p></div></div>
+          <div class="col-md-4"><div class="how"><span class="how-n">3</span><h3>Decide</h3><p>Get a PASS / FAIL / REVIEW verdict, class probabilities and a defect heatmap.</p></div></div>
+        </div>
+        <p class="help mt-4 mb-0">First time? Run <code>python scripts/prepare_data.py</code> and <code>python scripts/train_classifier.py</code>, then press “Refresh status”.</p>
+      </div>
+
+      <!-- workspace -->
+      <div id="workspace" hidden>
+        <div id="verdictCard" class="verdict" data-state="idle">
+          <div class="verdict-badge" id="verdictBadge">READY</div>
+          <div class="verdict-body">
+            <h2 class="verdict-title" id="verdictTitle">Ready to analyze</h2>
+            <p class="verdict-reason" id="verdictReason">Press “Analyze image” to start.</p>
+          </div>
+          <div class="verdict-meta" id="verdictMeta"></div>
+        </div>
+
+        <div class="panel loading-host">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <h2 class="panel-title mb-0">Original vs. heatmap</h2>
+            <label class="switch">
+              <input type="checkbox" id="toggleHeatmap" checked>
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span>Show heatmap</span>
+            </label>
+          </div>
+          <div class="images-grid">
+            <figure class="fig">
+              <div class="img-stack"><img id="imgOriginal" alt="Original uploaded image"></div>
+              <figcaption>Original</figcaption>
+            </figure>
+            <figure class="fig">
+              <div class="img-stack">
+                <img id="imgBase" alt="Image with heatmap overlay">
+                <img id="imgHeat" class="heat" alt="Anomaly heatmap" hidden>
+                <div id="heatPlaceholder" class="heat-placeholder">Heatmap appears here after analysis<br>(Mode B or Combined).</div>
+              </div>
+              <figcaption>Heatmap overlay</figcaption>
+            </figure>
+          </div>
+          <div class="legend" id="legend" hidden><span>normal</span><i class="legend-bar"></i><span>suspicious</span></div>
+
+          <div id="loading" class="loading" hidden>
+            <div class="spinner" aria-hidden="true"></div>
+            <p id="loadingText">Analyzing…</p>
+            <p class="help">The first run can take longer while models load.</p>
+            <button type="button" id="btnCancel" class="btn btn-sm btn-ghost">Cancel</button>
+          </div>
+        </div>
+
+        <div class="row g-4 mt-0" id="detailGrid">
+          <div class="col-md-6" id="cardA" hidden>
+            <div class="panel h-100">
+              <h2 class="panel-title">A · Classifier</h2>
+              <div id="cardAMsg" class="unavailable" hidden></div>
+              <div id="cardABody">
+                <div class="pred-label" id="predLabel">—</div>
+                <div class="pred-conf" id="predConf">—</div>
+                <div id="probBars" class="prob-bars"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6" id="cardB" hidden>
+            <div class="panel h-100">
+              <h2 class="panel-title">B · Anomaly score</h2>
+              <div id="cardBMsg" class="unavailable" hidden></div>
+              <div id="cardBBody">
+                <div class="score-row"><span class="score-num" id="scoreNum">—</span><span class="score-unit">relative score</span></div>
+                <div class="gauge" id="gauge">
+                  <div class="gauge-fill" id="gaugeFill"></div>
+                  <div class="gauge-marker" id="gaugeMarker"><span>threshold</span></div>
+                </div>
+                <p class="help mt-4 mb-0">≈ 1.0 means “as different as the normal references are from each other”. Not a probability.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-4">
+          <button type="button" id="btnDownloadOverlay" class="btn btn-ghost" disabled>⬇ Download heatmap overlay (PNG)</button>
+          <button type="button" id="btnDownloadReport" class="btn btn-ghost" disabled>⬇ Download report (JSON)</button>
+        </div>
+      </div>
+
+      <!-- history -->
+      <div id="historyPanel" class="panel mt-4" hidden>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 class="panel-title mb-0">Recent analyses</h2>
+          <button type="button" id="btnClearHistory" class="link-btn">Clear history</button>
+        </div>
+        <ul id="historyList" class="history-list"></ul>
+      </div>
+
+    </section>
+  </div>
+</main>
+
+<footer class="footer">DeepVision AI · ResNet18 transfer learning + patch-feature anomaly detection · educational prototype</footer>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

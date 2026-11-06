@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.streamlit/
+models/*.pt
+data/classifier/train/*
+data/classifier/val/*
+data/anomaly/reference_normal/*
+!data/classifier/train/.gitkeep
+!data/classifier/val/.gitkeep
+!data/anomaly/reference_normal/.gitkeep
